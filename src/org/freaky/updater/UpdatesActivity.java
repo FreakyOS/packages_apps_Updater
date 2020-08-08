@@ -35,6 +35,7 @@ import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.LinearInterpolator;
 import android.view.animation.RotateAnimation;
+import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -48,7 +49,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import com.google.android.material.appbar.AppBarLayout;
-import com.google.android.material.appbar.CollapsingToolbarLayout;
 import com.google.android.material.snackbar.Snackbar;
 
 import org.json.JSONException;
@@ -111,49 +111,9 @@ public class UpdatesActivity extends UpdatesListActivity {
             }
         };
 
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayShowTitleEnabled(false);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-
-        TextView headerTitle = (TextView) findViewById(R.id.header_title);
-        headerTitle.setText(getString(R.string.header_title_text,
-                BuildInfoUtils.getBuildVersion()));
-
         updateLastCheckedString();
 
-        TextView headerBuildVersion = (TextView) findViewById(R.id.header_build_version);
-        headerBuildVersion.setText(
-                getString(R.string.header_android_version, Build.VERSION.RELEASE));
-
-        TextView headerBuildDate = (TextView) findViewById(R.id.header_build_date);
-        headerBuildDate.setText(StringGenerator.getDateLocalizedUTC(this,
-                DateFormat.LONG, BuildInfoUtils.getBuildDateTimestamp()));
-
-        // Switch between header title and appbar title minimizing overlaps
-        final CollapsingToolbarLayout collapsingToolbar =
-                (CollapsingToolbarLayout) findViewById(R.id.collapsing_toolbar);
-        final AppBarLayout appBar = (AppBarLayout) findViewById(R.id.app_bar);
-        appBar.addOnOffsetChangedListener(new AppBarLayout.OnOffsetChangedListener() {
-            boolean mIsShown = false;
-
-            @Override
-            public void onOffsetChanged(AppBarLayout appBarLayout, int verticalOffset) {
-                int scrollRange = appBarLayout.getTotalScrollRange();
-                if (!mIsShown && scrollRange + verticalOffset < 10) {
-                    collapsingToolbar.setTitle(getString(R.string.display_name));
-                    mIsShown = true;
-                } else if (mIsShown && scrollRange + verticalOffset > 100) {
-                    collapsingToolbar.setTitle(null);
-                    mIsShown = false;
-                }
-            }
-        });
-
-        if (!Utils.hasTouchscreen(this)) {
-            // This can't be collapsed without a touchscreen
-            appBar.setExpanded(false);
-        }
+        init();
 
         mRefreshAnimation = new RotateAnimation(0, 360, Animation.RELATIVE_TO_SELF, 0.5f,
                 Animation.RELATIVE_TO_SELF, 0.5f);
@@ -222,7 +182,7 @@ public class UpdatesActivity extends UpdatesListActivity {
 
         @Override
         public void onServiceConnected(ComponentName className,
-                IBinder service) {
+                                       IBinder service) {
             UpdaterService.LocalBinder binder = (UpdaterService.LocalBinder) service;
             mUpdaterService = binder.getService();
             mAdapter.setUpdaterController(mUpdaterService.getUpdaterController());
@@ -260,10 +220,10 @@ public class UpdatesActivity extends UpdatesListActivity {
         List<String> updateIds = new ArrayList<>();
         List<UpdateInfo> sortedUpdates = controller.getUpdates();
         if (sortedUpdates.isEmpty()) {
-            findViewById(R.id.no_new_updates_view).setVisibility(View.VISIBLE);
+            findViewById(R.id.no_updates_text).setVisibility(View.VISIBLE);
             findViewById(R.id.recycler_view).setVisibility(View.GONE);
         } else {
-            findViewById(R.id.no_new_updates_view).setVisibility(View.GONE);
+            findViewById(R.id.no_updates_text).setVisibility(View.GONE);
             findViewById(R.id.recycler_view).setVisibility(View.VISIBLE);
             sortedUpdates.sort((u1, u2) -> Long.compare(u2.getTimestamp(), u1.getTimestamp()));
             for (UpdateInfo update : sortedUpdates) {
@@ -328,7 +288,7 @@ public class UpdatesActivity extends UpdatesListActivity {
 
             @Override
             public void onResponse(int statusCode, String url,
-                    DownloadClient.Headers headers) {
+                                   DownloadClient.Headers headers) {
             }
 
             @Override
@@ -365,8 +325,8 @@ public class UpdatesActivity extends UpdatesListActivity {
         String lastCheckString = getString(R.string.header_last_updates_check,
                 StringGenerator.getDateLocalized(this, DateFormat.LONG, lastCheck),
                 StringGenerator.getTimeLocalized(this, lastCheck));
-        TextView headerLastCheck = (TextView) findViewById(R.id.header_last_check);
-        headerLastCheck.setText(lastCheckString);
+//        TextView headerLastCheck = (TextView) findViewById(R.id.header_last_check);
+//        headerLastCheck.setText(lastCheckString);
     }
 
     private void handleDownloadStatusChange(String downloadId) {
@@ -453,5 +413,64 @@ public class UpdatesActivity extends UpdatesListActivity {
                     }
                 })
                 .show();
+    }
+
+    private void init() {
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        getSupportActionBar().setDisplayShowTitleEnabled(false);
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_chevron_left);
+
+        TextView romVersion = findViewById(R.id.header_rom_version);
+        romVersion.setText(BuildInfoUtils.getBuildVersion());
+
+        TextView buildDate = findViewById(R.id.current_build_date_field);
+        buildDate.setText(StringGenerator.getDateLocalizedUTC(this,
+                DateFormat.LONG, BuildInfoUtils.getBuildDateTimestamp()));
+
+        final AppBarLayout appBar = findViewById(R.id.app_bar);
+
+        TextView collapsedView = findViewById(R.id.toolbar_title);
+        LinearLayout expandedView = findViewById(R.id.header_container);
+
+        appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> {
+            float currentPosition = (float) Math.abs(verticalOffset) / appBarLayout.getTotalScrollRange();
+
+            if (currentPosition == 0f) {
+                expandedView.setAlpha(1f);
+                collapsedView.setAlpha(0f);
+            }
+            if (currentPosition == 1f) {
+                expandedView.setAlpha(0f);
+                collapsedView.setAlpha(1f);
+            }
+            handleExpandedTitle(expandedView, currentPosition);
+            handleCollapsedTitle(collapsedView, currentPosition);
+        });
+
+        if (!Utils.hasTouchscreen(this)) {
+            // This can't be collapsed without a touchscreen
+            appBar.setExpanded(false);
+        }
+    }
+
+    private void handleCollapsedTitle(View view, float position) {
+        float collapsedAlphaEnd = 0.8f;
+        float collapsedAlphaStart = 0.3f;
+        if (position >= collapsedAlphaStart && position < collapsedAlphaEnd) {
+            view.setAlpha(
+                    (position - collapsedAlphaStart) / (collapsedAlphaEnd - collapsedAlphaStart));
+        }
+    }
+
+    private void handleExpandedTitle(View view, float position) {
+        float expandedAlphaStart = 0.1f;
+        float expandedAlphaEnd = 0.7f;
+        if (position >= expandedAlphaStart && position < expandedAlphaEnd) {
+            float percentage =
+                    (position / (expandedAlphaEnd - expandedAlphaStart));
+            view.setAlpha(1 - percentage);
+        }
     }
 }
